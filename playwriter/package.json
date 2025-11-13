@@ -24,15 +24,15 @@
   "author": "Tommaso De Rossi, morse <beats.by.morse@gmail.com>",
   "license": "",
   "devDependencies": {
-    "@vitest/ui": "^3.2.4",
-    "vite-node": "^3.2.4",
-    "vitest": "^3.2.4"
+    "@vitest/ui": "^4.0.8",
+    "vite-node": "^5.0.0",
+    "vitest": "^4.0.8"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.18.0",
+    "@modelcontextprotocol/sdk": "^1.21.1",
     "@playwright/mcp": "latest",
-    "patchright-core": "^1.52.5",
-    "user-agents": "^1.1.610",
+    "patchright-core": "^1.56.1",
+    "user-agents": "^1.1.669",
     "zod": "^4.1.12"
   }
 }
