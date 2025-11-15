@@ -42,11 +42,17 @@ export class RelayConnection {
   private _nextSessionId: number = 1;
   private _ws: WebSocket;
   private _closed = false;
+  private _onCloseCallback?: () => void;
+  private _onTabDetachedCallback?: (tabId: number) => void;
 
-  onclose?: () => void;
-
-  constructor(ws: WebSocket) {
+  constructor({ ws, onClose, onTabDetached }: {
+    ws: WebSocket;
+    onClose?: () => void;
+    onTabDetached?: (tabId: number) => void;
+  }) {
     this._ws = ws;
+    this._onCloseCallback = onClose;
+    this._onTabDetachedCallback = onTabDetached;
     this._ws.onmessage = async (event: MessageEvent) => {
       let message: ExtensionCommandMessage;
       try {
@@ -164,6 +170,9 @@ export class RelayConnection {
       }
     });
 
+    this._attachedTabs.delete(tabId);
+    debugLog('Removed tab from _attachedTabs map. Remaining tabs:', this._attachedTabs.size);
+    
     chrome.debugger.detach(tab.debuggee)
       .then(() => {
         debugLog('Successfully detached debugger from tab:', tabId);
@@ -171,9 +180,6 @@ export class RelayConnection {
       .catch((err) => {
         debugLog('Error detaching debugger from tab:', tabId, err.message);
       });
-    
-    this._attachedTabs.delete(tabId);
-    debugLog('Removed tab from _attachedTabs map. Remaining tabs:', this._attachedTabs.size);
   }
 
   close(message: string): void {
@@ -211,8 +217,8 @@ export class RelayConnection {
     this._attachedTabs.clear();
     debugLog('All tabs cleared from map. Chrome automation bar should disappear in a few seconds.');
 
-    debugLog('Connection closed, calling onclose callback');
-    this.onclose?.();
+    debugLog('Connection closed, calling onClose callback');
+    this._onCloseCallback?.();
   }
 
   private _onDebuggerEvent = (source: chrome.debugger.DebuggerSession, method: string, params: any): void => {
@@ -256,7 +262,10 @@ export class RelayConnection {
       return;
     }
 
-    debugLog(`Debugger detached from tab ${tabId}: ${reason}`);
+    debugLog(`Manual debugger detachment detected for tab ${tabId}: ${reason}`);
+    debugLog('User closed debugger via Chrome automation bar, calling onTabDetached callback');
+    this._onTabDetachedCallback?.(tabId);
+    
     this.detachTab(tabId);
   };
 

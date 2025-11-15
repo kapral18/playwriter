@@ -116,18 +116,28 @@ class SimplifiedExtension {
         });
 
         debugLog('WebSocket connected successfully, creating RelayConnection instance');
-        this._connection = new RelayConnection(socket);
-        this._connection.onclose = () => {
-          debugLog('=== Relay connection onclose callback triggered ===');
-          debugLog('Connected tabs before clearing:', Array.from(this._connectedTabs.keys()));
-          this._connection = undefined;
-          for (const tabId of this._connectedTabs.keys()) {
-            debugLog('Updating icon to disconnected for tab:', tabId);
+        this._connection = new RelayConnection({
+          ws: socket,
+          onClose: () => {
+            debugLog('=== Relay connection onClose callback triggered ===');
+            debugLog('Connected tabs before clearing:', Array.from(this._connectedTabs.keys()));
+            this._connection = undefined;
+            for (const tabId of this._connectedTabs.keys()) {
+              debugLog('Updating icon to disconnected for tab:', tabId);
+              void this._updateIcon(tabId, 'disconnected');
+            }
+            this._connectedTabs.clear();
+            debugLog('All tabs cleared');
+          },
+          onTabDetached: (tabId) => {
+            debugLog('=== Manual tab detachment detected for tab:', tabId, '===');
+            debugLog('User closed debugger via Chrome automation bar');
+            this._connectedTabs.delete(tabId);
+            debugLog('Removed tab from _connectedTabs map');
             void this._updateIcon(tabId, 'disconnected');
+            debugLog('Updated icon to disconnected state');
           }
-          this._connectedTabs.clear();
-          debugLog('All tabs cleared');
-        };
+        });
       } else {
         debugLog('Reusing existing connection');
       }
