@@ -17,10 +17,15 @@ type CDPEventWithSource = CDPEvent & {
   __serverGenerated?: boolean
 }
 
+type PlaywrightClient = {
+  id: string
+  ws: WSContext
+}
+
 export async function startRelayServer({ port = 9988 }: { port?: number } = {}) {
   const connectedTargets = new Map<string, ConnectedTarget>()
 
-  let playwrightWs: WSContext | null = null
+  const playwrightClients = new Map<string, PlaywrightClient>()
   let extensionWs: WSContext | null = null
 
   const extensionPendingRequests = new Map<number, {
@@ -31,6 +36,7 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
 
   function logCdpMessage({
     direction,
+    clientId,
     method,
     sessionId,
     params,
@@ -38,6 +44,7 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
     source
   }: {
     direction: 'to-playwright' | 'from-playwright' | 'from-extension'
+    clientId?: string
     method: string
     sessionId?: string
     params?: any
@@ -59,28 +66,34 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
         details.push(`targetId=${params.targetId}`)
       }
       if (params.sessionId && params.sessionId !== sessionId) {
-        details.push(`sessionIdParam=${params.sessionId}`)
+        details.push(`sessionId=${params.sessionId}`)
       }
     }
 
     const detailsStr = details.length > 0 ? ` ${chalk.gray(details.join(', '))}` : ''
 
     if (direction === 'from-playwright') {
-      console.log(chalk.cyan('← Playwright:'), method + detailsStr)
+      const clientLabel = clientId ? chalk.blue(`[${clientId}]`) : ''
+      console.log(chalk.cyan('← Playwright'), clientLabel + ':', method + detailsStr)
     } else if (direction === 'from-extension') {
       console.log(chalk.yellow('← Extension:'), method + detailsStr)
     } else if (direction === 'to-playwright') {
       const color = source === 'server' ? chalk.magenta : chalk.green
       const sourceLabel = source === 'server' ? chalk.gray(' (server-generated)') : ''
-      console.log(color('→ Playwright:'), method + detailsStr + sourceLabel)
+      const clientLabel = clientId ? chalk.blue(`[${clientId}]`) : chalk.blue('[ALL]')
+      console.log(color('→ Playwright'), clientLabel + ':', method + detailsStr + sourceLabel)
     }
   }
 
-  function sendToPlaywright({ message, source = 'extension' }: { message: CDPResponse | CDPEvent; source?: 'extension' | 'server' }) {
-    if (!playwrightWs) {
-      return
-    }
-
+  function sendToPlaywright({
+    message,
+    clientId,
+    source = 'extension'
+  }: {
+    message: CDPResponse | CDPEvent
+    clientId?: string
+    source?: 'extension' | 'server'
+  }) {
     const messageToSend = source === 'server' && 'method' in message
       ? { ...message, __serverGenerated: true }
       : message
@@ -88,6 +101,7 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
     if ('method' in message) {
       logCdpMessage({
         direction: 'to-playwright',
+        clientId,
         method: message.method,
         sessionId: 'sessionId' in message ? message.sessionId : undefined,
         params: 'params' in message ? message.params : undefined,
@@ -95,7 +109,18 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
       })
     }
 
-    playwrightWs.send(JSON.stringify(messageToSend))
+    const messageStr = JSON.stringify(messageToSend)
+
+    if (clientId) {
+      const client = playwrightClients.get(clientId)
+      if (client) {
+        client.ws.send(messageStr)
+      }
+    } else {
+      for (const client of playwrightClients.values()) {
+        client.ws.send(messageStr)
+      }
+    }
   }
 
   async function sendToExtension({ method, params }: { method: string; params?: any }) {
@@ -185,96 +210,102 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
     return c.text('OK')
   })
 
-  app.get('/cdp', upgradeWebSocket(() => {
-      return {
-        onOpen(_event, ws) {
-          if (playwrightWs) {
-            console.log('Rejecting second Playwright connection')
-            ws.close(1000, 'Another CDP client already connected')
-            return
-          }
+  app.get('/cdp/:clientId?', upgradeWebSocket((c) => {
+    const clientId = c.req.param('clientId') || 'default'
 
-          playwrightWs = ws
-          console.log('Playwright connected')
-        },
-
-        async onMessage(event, ws) {
-          let message: CDPCommand
-
-          try {
-            message = JSON.parse(event.data.toString())
-          } catch {
-            return
-          }
-
-          const { id, sessionId, method, params } = message
-
-          logCdpMessage({
-            direction: 'from-playwright',
-            method,
-            sessionId,
-            id
-          })
-
-          if (!extensionWs) {
-            sendToPlaywright({
-              message: {
-                id,
-                sessionId,
-                error: { message: 'Extension not connected' }
-              }
-            })
-            return
-          }
-
-          try {
-            const result: any = await routeCdpCommand({ method, params, sessionId })
-
-            if (method === 'Target.setAutoAttach' && !sessionId) {
-              for (const target of connectedTargets.values()) {
-                sendToPlaywright({
-                  message: {
-                    method: 'Target.attachedToTarget',
-                    params: {
-                      sessionId: target.sessionId,
-                      targetInfo: {
-                        ...target.targetInfo,
-                        attached: true
-                      },
-                      waitingForDebugger: false
-                    }
-                  } satisfies CDPEvent,
-                  source: 'server'
-                })
-              }
-            }
-
-            sendToPlaywright({ message: { id, sessionId, result } })
-          } catch (e) {
-            console.error('Error handling CDP command:', e)
-            sendToPlaywright({
-              message: {
-                id,
-                sessionId,
-                error: { message: (e as Error).message }
-              }
-            })
-          }
-        },
-
-        onClose() {
-          if (playwrightWs) {
-            console.log('Playwright disconnected')
-            playwrightWs = null
-          }
-        },
-
-        onError(event) {
-          console.error('Playwright WebSocket error:', event)
+    return {
+      onOpen(_event, ws) {
+        if (playwrightClients.has(clientId)) {
+          console.log(chalk.red(`Rejecting duplicate client ID: ${clientId}`))
+          ws.close(1000, 'Client ID already connected')
+          return
         }
+
+        playwrightClients.set(clientId, { id: clientId, ws })
+        console.log(chalk.green(`Playwright client connected: ${clientId} (${playwrightClients.size} total)`))
+      },
+
+      async onMessage(event, ws) {
+        let message: CDPCommand
+
+        try {
+          message = JSON.parse(event.data.toString())
+        } catch {
+          return
+        }
+
+        const { id, sessionId, method, params } = message
+
+        logCdpMessage({
+          direction: 'from-playwright',
+          clientId,
+          method,
+          sessionId,
+          id
+        })
+
+        if (!extensionWs) {
+          sendToPlaywright({
+            message: {
+              id,
+              sessionId,
+              error: { message: 'Extension not connected' }
+            },
+            clientId
+          })
+          return
+        }
+
+        try {
+          const result: any = await routeCdpCommand({ method, params, sessionId })
+
+          if (method === 'Target.setAutoAttach' && !sessionId) {
+            for (const target of connectedTargets.values()) {
+              sendToPlaywright({
+                message: {
+                  method: 'Target.attachedToTarget',
+                  params: {
+                    sessionId: target.sessionId,
+                    targetInfo: {
+                      ...target.targetInfo,
+                      attached: true
+                    },
+                    waitingForDebugger: false
+                  }
+                } satisfies CDPEvent,
+                clientId,
+                source: 'server'
+              })
+            }
+          }
+
+          sendToPlaywright({
+            message: { id, sessionId, result },
+            clientId
+          })
+        } catch (e) {
+          console.error('Error handling CDP command:', e)
+          sendToPlaywright({
+            message: {
+              id,
+              sessionId,
+              error: { message: (e as Error).message }
+            },
+            clientId
+          })
+        }
+      },
+
+      onClose() {
+        playwrightClients.delete(clientId)
+        console.log(chalk.yellow(`Playwright client disconnected: ${clientId} (${playwrightClients.size} remaining)`))
+      },
+
+      onError(event) {
+        console.error(`Playwright WebSocket error [${clientId}]:`, event)
       }
-    })
-  )
+    }
+  }))
 
   app.get('/extension', upgradeWebSocket(() => {
     return {
@@ -379,10 +410,10 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
         extensionWs = null
         connectedTargets.clear()
 
-        if (playwrightWs) {
-          playwrightWs.close(1000, 'Extension disconnected')
-          playwrightWs = null
+        for (const client of playwrightClients.values()) {
+          client.ws.close(1000, 'Extension disconnected')
         }
+        playwrightClients.clear()
       },
 
       onError(event) {
@@ -406,7 +437,10 @@ export async function startRelayServer({ port = 9988 }: { port?: number } = {}) 
     cdpEndpoint,
     extensionEndpoint,
     close() {
-      playwrightWs?.close(1000, 'Server stopped')
+      for (const client of playwrightClients.values()) {
+        client.ws.close(1000, 'Server stopped')
+      }
+      playwrightClients.clear()
       extensionWs?.close(1000, 'Server stopped')
       server.close()
     }
