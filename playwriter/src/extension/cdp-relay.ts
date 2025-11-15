@@ -49,6 +49,18 @@ export async function startRelayServer({ port = 9988, logger = console }: { port
     id?: number
     source?: 'extension' | 'server'
   }) {
+    const noisyEvents = [
+      'Network.requestWillBeSentExtraInfo',
+      'Network.responseReceived',
+      'Network.responseReceivedExtraInfo',
+      'Network.dataReceived',
+      'Network.loadingFinished'
+    ]
+
+    if (noisyEvents.includes(method)) {
+      return
+    }
+
     const details: string[] = []
 
     if (id !== undefined) {
