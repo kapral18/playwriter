@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { Page, Browser, chromium } from 'playwright-core'
+import { Page, Browser, BrowserContext, chromium } from 'playwright-core'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
@@ -10,16 +10,18 @@ import vm from 'node:vm'
 
 const require = createRequire(import.meta.url)
 
-interface ToolState {
+interface State {
   isConnected: boolean
   page: Page | null
   browser: Browser | null
+  context: BrowserContext | null
 }
 
-const state: ToolState = {
+const state: State = {
   isConnected: false,
   page: null,
   browser: null,
+  context: null,
 }
 
 const RELAY_PORT = 19988
@@ -76,6 +78,7 @@ async function ensureConnection(): Promise<{ browser: Browser; page: Page }> {
 
   state.browser = browser
   state.page = page
+  state.context = context
   state.isConnected = true
 
   return { browser, page }
@@ -125,7 +128,7 @@ server.tool(
     await ensureConnection()
 
     const page = await getCurrentPage()
-    const context = page.context()
+    const context = state.context || page.context()
 
     console.error('Executing code:', code)
     try {
@@ -197,11 +200,17 @@ server.tool(
         responseText += 'Code executed successfully (no output)'
       }
 
+      const MAX_LENGTH = 1000
+      let finalText = responseText.trim()
+      if (finalText.length > MAX_LENGTH) {
+        finalText = finalText.slice(0, MAX_LENGTH) + `\n\n[Truncated to ${MAX_LENGTH} characters. Better manage your logs or paginate them to read the full logs]`
+      }
+
       return {
         content: [
           {
             type: 'text',
-            text: responseText.trim(),
+            text: finalText,
           },
         ],
       }

@@ -1,9 +1,9 @@
 {
   "name": "playwriter",
   "description": "",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "type": "module",
-  "repository": "https://github.com/remorses/",
+  "repository": "https://github.com/remorses/playwriter",
   "scripts": {
     "build": "rm -rf dist *.tsbuildinfo && mkdir dist && cp src/resource.md src/prompt.md dist/ && tsc",
     "prepublishOnly": "pnpm build",

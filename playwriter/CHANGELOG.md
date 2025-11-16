@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.4
+
+### Patch Changes
+
+- Added `context` field to `State` type
+- Renamed `ToolState` interface to `State`
+- Limit execute tool output to 1000 characters with truncation message
+
 ## 0.0.3
 
 ### Patch Changes
