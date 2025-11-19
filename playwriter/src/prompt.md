@@ -48,6 +48,8 @@ after you click a button or submit a form you ALWAYS have to then check what is 
 
 if nothing happened you may need to wait before the action completes, using something like `page.waitForNavigation({timeout: 3000})` or `await page.waitForLoadState('networkidle', {timeout: 3000})`
 
+if nothing happens it could also means that you clicked the wrong button or link. try to search for other appropriate elements to click or submit
+
 
 ## event listeners
 
