@@ -91,6 +91,16 @@ Then you can use `page.locator(`aria-ref=${ref}`)` to get an element with a spec
 
 IMPORTANT: notice that we do not add any quotes in `aria-ref`! it MUST be called without quotes
 
+## getting selector for a locator identified by snapshot aria-ref
+
+in some cases you want to get a selector for a locator you just identified using `const element = page.locator('aria-ref=${ref}')`. To do so you can use `await getLocatorStringForElement(element)`. This is useful if you need to find other elements of the same type in a list for example. If you know the selector you can usually change a bit the selector to find the other elements of the same type in the list or table
+
+```js
+const loc = page.locator('aria-ref=123');
+console.log(await getLocatorStringForElement(loc)); 
+// => "getByRole('button', { name: 'Save' })" or similar
+```
+
 ## finding specific elements with snapshot
 
 You can use `searchString` to find specific elements in the snapshot without reading the whole page structure. This is useful for finding forms, textareas, or specific text.

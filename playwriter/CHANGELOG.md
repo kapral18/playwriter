@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.8
+
+### Patch Changes
+
+- Added `getLocatorStringForElement` utility to `execute` tool context
+- Helper generates Playwright locator strings for element handles
+- Fixed bug where timeout was not correctly passed to `waitForEvent` in `getCurrentPage`
+
 ## 0.0.7
 
 ### Patch Changes

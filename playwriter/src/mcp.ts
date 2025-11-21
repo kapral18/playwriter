@@ -51,12 +51,15 @@ interface VMContext {
     searchString?: string | RegExp
     contextLines?: number
   }) => Promise<string>
+  getLocatorStringForElement: (element: any) => Promise<string>
   resetPlaywright: () => Promise<{ page: Page; context: BrowserContext }>
   require: NodeRequire
   import: (specifier: string) => Promise<any>
 }
 
 type VMContextWithGlobals = VMContext & typeof usefulGlobals
+
+type SelectorGenerator = typeof import('@mizchi/selector-generator')
 
 const state: State = {
   isConnected: false,
@@ -125,7 +128,7 @@ async function ensureConnection(): Promise<{ browser: Browser; page: Page }> {
   return { browser, page }
 }
 
-async function getCurrentPage() {
+async function getCurrentPage(timeout = 5000) {
   if (state.page) {
     return state.page
   }
@@ -202,7 +205,7 @@ server.tool(
   async ({ code, timeout }) => {
     await ensureConnection()
 
-    const page = await getCurrentPage()
+    const page = await getCurrentPage(timeout)
     const context = state.context || page.context()
 
     console.error('Executing code:', code)
@@ -277,12 +280,40 @@ server.tool(
         throw new Error('accessibilitySnapshot is not available on this page')
       }
 
+      const getLocatorStringForElement = async (element: any) => {
+        if (!element || typeof element.evaluate !== 'function') {
+          throw new Error(
+            'getLocatorStringForElement: argument must be a Playwright Locator or ElementHandle',
+          )
+        }
+
+        return await element.evaluate(async (el: any) => {
+          const WIN = globalThis as any
+          if (!WIN.__selectorGenerator) {
+            const module: SelectorGenerator = await import(
+              // @ts-ignore
+              'https://unpkg.com/@mizchi/selector-generator@1.50.0-next/dist/index.js'
+            )
+            WIN.__selectorGenerator = {
+              createSelectorGenerator: module.createSelectorGenerator,
+              toLocator: module.toLocator,
+            }
+          }
+          const { createSelectorGenerator, toLocator } =
+            WIN.__selectorGenerator as SelectorGenerator
+          const generator = createSelectorGenerator(WIN)
+          const result = generator(el)
+          return toLocator(result.selector, 'javascript')
+        })
+      }
+
       let vmContextObj: VMContextWithGlobals = {
         page,
         context,
         state,
         console: customConsole,
         accessibilitySnapshot,
+        getLocatorStringForElement,
         resetPlaywright: async () => {
           const { page: newPage, context: newContext } = await resetConnection()
 
@@ -294,6 +325,7 @@ server.tool(
             state,
             console: customConsole,
             accessibilitySnapshot,
+            getLocatorStringForElement,
             resetPlaywright: vmContextObj.resetPlaywright,
             require,
             import: vmContextObj.import,
