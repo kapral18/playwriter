@@ -280,7 +280,7 @@ describe('MCP Server Tests', () => {
 
     })
 
-    it('should handle new pages and toggling', async () => {
+    it('should handle new pages and toggling with new connections', async () => {
         if (!browserContext) throw new Error('Browser not initialized')
 
         // Find the correct service worker by URL
@@ -357,6 +357,71 @@ describe('MCP Server Tests', () => {
 
 
         await page.close()
+    })
+
+    it('should handle new pages and toggling with persistent connection', async () => {
+        if (!browserContext) throw new Error('Browser not initialized')
+
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+        
+        // Connect once
+        const directBrowser = await chromium.connectOverCDP(getCdpUrl())
+        // Wait a bit for connection and initial target discovery
+        await new Promise(r => setTimeout(r, 500))
+        
+        // 1. Create a new page
+        const page = await browserContext.newPage()
+        const testUrl = 'https://example.com/persistent'
+        await page.goto(testUrl)
+        await page.bringToFront()
+
+        // 2. Enable extension
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        // 3. Verify page appears (polling)
+        let foundPage
+        for (let i = 0; i < 50; i++) {
+            const pages = directBrowser.contexts()[0].pages()
+            foundPage = pages.find(p => p.url() === testUrl)
+            if (foundPage) break
+            await new Promise(r => setTimeout(r, 100))
+        }
+        expect(foundPage).toBeDefined()
+        expect(foundPage?.url()).toBe(testUrl)
+        
+        // 4. Disable extension
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        // 5. Verify page disappears (polling)
+        for (let i = 0; i < 50; i++) {
+            const pages = directBrowser.contexts()[0].pages()
+            foundPage = pages.find(p => p.url() === testUrl)
+            if (!foundPage) break
+            await new Promise(r => setTimeout(r, 100))
+        }
+        expect(foundPage).toBeUndefined()
+
+        // 6. Re-enable extension
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        // 7. Verify page reappears (polling)
+        for (let i = 0; i < 50; i++) {
+            const pages = directBrowser.contexts()[0].pages()
+            foundPage = pages.find(p => p.url() === testUrl)
+            if (foundPage) break
+            await new Promise(r => setTimeout(r, 100))
+        }
+        expect(foundPage).toBeDefined()
+        expect(foundPage?.url()).toBe(testUrl)
+        
+        await page.close()
+        await directBrowser.close()
     })
     it('should maintain connection across reloads and navigation', async () => {
         if (!browserContext) throw new Error('Browser not initialized')
