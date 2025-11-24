@@ -297,18 +297,20 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
 
           if (method === 'Target.setAutoAttach' && !sessionId) {
             for (const target of connectedTargets.values()) {
+              const attachedPayload = {
+                method: 'Target.attachedToTarget',
+                params: {
+                  sessionId: target.sessionId,
+                  targetInfo: {
+                    ...target.targetInfo,
+                    attached: true
+                  },
+                  waitingForDebugger: false
+                }
+              } satisfies CDPEvent
+              logger.log(chalk.magenta('[Server] Target.attachedToTarget full payload:'), JSON.stringify(attachedPayload))
               sendToPlaywright({
-                message: {
-                  method: 'Target.attachedToTarget',
-                  params: {
-                    sessionId: target.sessionId,
-                    targetInfo: {
-                      ...target.targetInfo,
-                      attached: true
-                    },
-                    waitingForDebugger: false
-                  }
-                } satisfies CDPEvent,
+                message: attachedPayload,
                 clientId,
                 source: 'server'
               })
@@ -414,6 +416,8 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
 
           if (method === 'Target.attachedToTarget') {
             const targetParams = params as Protocol.Target.AttachedToTargetEvent
+
+            logger.log(chalk.yellow('[Extension] Target.attachedToTarget full payload:'), JSON.stringify({ method, params: targetParams, sessionId }))
 
             // Check if we already sent this target to clients (e.g., from Target.setAutoAttach response)
             const alreadyConnected = connectedTargets.has(targetParams.sessionId)
