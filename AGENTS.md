@@ -3,6 +3,7 @@ this codebase has the codebase for playwriter
 the extension uses chrome.debugger to manage the user browser
 
 read ./README.md for an overview of how this extension and mcp work
+read playwriter/src/prompt.md to understand how the MCP works
 
 ## architecture
 
@@ -48,11 +49,13 @@ you can run singular tests with `-t "testname"`
 
 each test() block should reset the extension connection to make sure tests are independent.
 
-NEVER call browser.close() in the tests
+NEVER call browser.close() in tests or any other code that interacts with our CDP endpoint
 
 remember that every time the extension is activated in a tab that tab gets added to the available pages. so if you toggle the extension and then do .newPage() there will be 2 pages, not 1.
 
 to debug server or extension issues you can also inspect the file playwriter/relay-server.log to see both extension and server logs. with all cdp events sent. to see if there are events missing or something broken. this file is recreated every time the server is started and appended in real time. use rg to only read relevant lines and parts because it can get quite long
+
+tests will take about 30 seconds, so set a timeout of at least 60 seconds when running the test bash command
 
 # core guidelines
 
@@ -74,6 +77,12 @@ always use kebab case for new filenames. never use uppercase letters in filename
 ## see files in the repo
 
 use `git ls-files | tree --fromfile` to see files in the repo. this command will ignore files ignored by git
+
+## handling unexpected file contents after a read or write
+
+if you find code that was not there since the last time you read the file it means the user or another agent edited the file. do not revert the changes that were added. instead keep them and integrate them with your new changes
+
+IMPORTANT: NEVER commit your changes unless clearly and specifically asked to!
 
 # typescript
 
