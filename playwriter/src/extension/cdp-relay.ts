@@ -466,12 +466,10 @@ export async function startPlayWriterCDPRelayServer({ port = 19988, host = '127.
             })
           } else if (method === 'Target.targetInfoChanged') {
             const infoParams = params as Protocol.Target.TargetInfoChangedEvent
-            const target = connectedTargets.get(sessionId ||'')
-            if (target) {
-              target.targetInfo = infoParams.targetInfo
-              // Update targetId mapping if needed, though usually targetId doesn't change
-              if (target.targetId !== infoParams.targetInfo.targetId) {
-                 target.targetId = infoParams.targetInfo.targetId
+            for (const target of connectedTargets.values()) {
+              if (target.targetId === infoParams.targetInfo.targetId) {
+                target.targetInfo = infoParams.targetInfo
+                break
               }
             }
 

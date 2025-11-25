@@ -615,6 +615,18 @@ describe('MCP Server Tests', () => {
             },
             {
               "title": "Example Domain",
+              "url": "https://example.com/mcp-test",
+            },
+            {
+              "title": "Example Domain",
+              "url": "https://example.com/",
+            },
+            {
+              "title": "Example Domain",
+              "url": "https://example.com/",
+            },
+            {
+              "title": "Example Domain",
               "url": "https://example.com/tab-a",
             },
             {
@@ -698,6 +710,18 @@ describe('MCP Server Tests', () => {
             {
               "title": "",
               "url": "about:blank",
+            },
+            {
+              "title": "Example Domain",
+              "url": "https://example.com/mcp-test",
+            },
+            {
+              "title": "Example Domain",
+              "url": "https://example.com/",
+            },
+            {
+              "title": "Example Domain",
+              "url": "https://example.com/",
             },
             {
               "title": "Example Domain",
@@ -1231,6 +1255,131 @@ describe('MCP Server Tests', () => {
             },
         })
     }, 30000)
+
+    it('should maintain correct page.url() with service worker pages', async () => {
+        if (!browserContext) throw new Error('Browser not initialized')
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+
+        const page = await browserContext.newPage()
+        const targetUrl = 'https://x.com'
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
+        await page.bringToFront()
+
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        await new Promise(r => setTimeout(r, 2000))
+
+        const browser = await chromium.connectOverCDP(getCdpUrl())
+        const pages = browser.contexts()[0].pages()
+        const xPage = pages.find(p => p.url().includes('x.com'))
+
+        expect(xPage).toBeDefined()
+        expect(xPage?.url()).toContain('x.com')
+        expect(xPage?.url()).not.toContain('sw.js')
+
+        await browser.close()
+        await page.close()
+    }, 30000)
+
+    it('should maintain correct page.url() after repeated connections', async () => {
+        if (!browserContext) throw new Error('Browser not initialized')
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+
+        const page = await browserContext.newPage()
+        const targetUrl = 'https://example.com/repeated-test'
+        await page.goto(targetUrl)
+        await page.bringToFront()
+
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        for (let i = 0; i < 5; i++) {
+            const browser = await chromium.connectOverCDP(getCdpUrl())
+            const pages = browser.contexts()[0].pages()
+            const testPage = pages.find(p => p.url().includes('repeated-test'))
+
+            expect(testPage).toBeDefined()
+            expect(testPage?.url()).toBe(targetUrl)
+
+            await browser.close()
+            await new Promise(r => setTimeout(r, 200))
+        }
+
+        await page.close()
+    }, 30000)
+
+    it('should maintain correct page.url() with concurrent MCP and CDP connections', async () => {
+        if (!browserContext) throw new Error('Browser not initialized')
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+
+        const page = await browserContext.newPage()
+        const targetUrl = 'https://example.com/concurrent-test'
+        await page.goto(targetUrl)
+        await page.bringToFront()
+
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        await new Promise(r => setTimeout(r, 500))
+
+        const [mcpResult, cdpBrowser] = await Promise.all([
+            client.callTool({
+                name: 'execute',
+                arguments: {
+                    code: js`
+              const pages = context.pages();
+              const testPage = pages.find(p => p.url().includes('concurrent-test'));
+              return { url: testPage?.url(), found: !!testPage };
+            `,
+                },
+            }),
+            chromium.connectOverCDP(getCdpUrl())
+        ])
+
+        const mcpOutput = (mcpResult as any).content[0].text
+        expect(mcpOutput).toContain(targetUrl)
+
+        const cdpPages = cdpBrowser.contexts()[0].pages()
+        const cdpPage = cdpPages.find(p => p.url().includes('concurrent-test'))
+        expect(cdpPage?.url()).toBe(targetUrl)
+
+        await cdpBrowser.close()
+        await page.close()
+    }, 30000)
+
+    it('should maintain correct page.url() with iframe-heavy pages', async () => {
+        if (!browserContext) throw new Error('Browser not initialized')
+        const serviceWorker = await getExtensionServiceWorker(browserContext)
+
+        const page = await browserContext.newPage()
+        const targetUrl = 'https://www.youtube.com'
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' })
+        await page.bringToFront()
+
+        await serviceWorker.evaluate(async () => {
+            await globalThis.toggleExtensionForActiveTab()
+        })
+
+        await new Promise(r => setTimeout(r, 3000))
+
+        for (let i = 0; i < 3; i++) {
+            const browser = await chromium.connectOverCDP(getCdpUrl())
+            const pages = browser.contexts()[0].pages()
+            const ytPage = pages.find(p => p.url().includes('youtube.com'))
+
+            expect(ytPage).toBeDefined()
+            expect(ytPage?.url()).toContain('youtube.com')
+
+            await browser.close()
+            await new Promise(r => setTimeout(r, 500))
+        }
+
+        await page.close()
+    }, 60000)
 
 })
 
