@@ -594,44 +594,24 @@ server.tool(
       }
     } catch (error: any) {
       const errorStack = error.stack || error.message
-      console.error('Error in execute tool, attempting reset:', errorStack)
+      console.error('Error in execute tool:', errorStack)
 
       const logsText = formatConsoleLogs(consoleLogs, 'Console output (before error)')
 
-      if (error.message.includes('duplicate target')) {
-        await sendLogToRelayServer('error', '[MCP] CRITICAL ERROR - Connection reset triggered:', errorStack)
-        try {
-          await resetConnection()
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `${logsText}Connection was reset due to internal error. Please retry your command.\n\nError: ${error.message}`,
-              },
-            ],
-          }
-        } catch (resetError: any) {
-          await sendLogToRelayServer(
-            'error',
-            '[MCP] CRITICAL ERROR - Reset failed:',
-            resetError.stack || resetError.message,
-          )
-          return {
-            content: [
-              {
-                type: 'text',
-                text: `${logsText}Connection was reset due to internal error. Error executing code: ${error.message}\n${errorStack}`,
-              },
-            ],
-            isError: true,
-          }
-        }
+      const isTimeoutError = error.name === 'TimeoutError' || error.message.includes('Timeout')
+      if (!isTimeoutError) {
+        sendLogToRelayServer('error', '[MCP] Error:', errorStack)
       }
+
+      const resetHint = isTimeoutError
+        ? ''
+        : '\n\n[HINT: If this is an internal Playwright error, page/browser closed, or connection issue, call the `reset` tool to reconnect. Do NOT reset for other non-connection non-internal errors.]'
+
       return {
         content: [
           {
             type: 'text',
-            text: `${logsText}Error executing code: ${error.message}\n${errorStack}`,
+            text: `${logsText}\nError executing code: ${error.message}\n${errorStack}${resetHint}`,
           },
         ],
         isError: true,
