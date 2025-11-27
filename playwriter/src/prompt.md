@@ -75,8 +75,8 @@ you have access to some functions in addition to playwright methods:
 - `async accessibilitySnapshot({ page, search, contextLines, showDiffSinceLastCall })`: gets a human readable snapshot of clickable elements on the page. useful to see the overall structure of the page and what elements you can interact with.
     - `page`: the page object to snapshot
     - `search`: (optional) a string or regex to filter the snapshot. If provided, returns the first 10 matches with surrounding context
-    - `contextLines`: (optional) number of lines of context to show around each match (default: 10)
-    - `showDiffSinceLastCall`: (optional) if true, returns a unified diff patch showing only changes since the last snapshot call for this page. Disables search when enabled. Useful to see what changed after an action.
+    - `contextLines`: (optional) number of lines of context to show around each match (default: 10). Also controls context lines in diff output.
+    - `showDiffSinceLastCall`: (optional) if true, returns a unified diff patch showing only changes since the last non-diff snapshot call for this page. Disables search when enabled. Useful to see what changed after an action. Note: diff calls do not update the stored snapshot, so you can call diff multiple times and always compare against the same baseline.
 - `getLatestLogs({ page, count, search })`: retrieves browser console logs. The system automatically captures and stores up to 5000 logs per page. Logs are cleared when a page reloads or navigates.
     - `page`: (optional) filter logs by a specific page instance. Only returns logs from that page
     - `count`: (optional) limit number of logs to return. If not specified, returns all available logs

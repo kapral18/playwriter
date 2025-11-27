@@ -404,13 +404,15 @@ server.tool(
 
           if (showDiffSinceLastCall) {
             const previousSnapshot = lastSnapshots.get(targetPage)
-            lastSnapshots.set(targetPage, snapshotStr)
 
             if (!previousSnapshot) {
+              lastSnapshots.set(targetPage, snapshotStr)
               return 'No previous snapshot available. This is the first call for this page. Full snapshot stored for next diff.'
             }
 
-            const patch = createPatch('snapshot', previousSnapshot, snapshotStr, 'previous', 'current')
+            const patch = createPatch('snapshot', previousSnapshot, snapshotStr, 'previous', 'current', {
+              context: contextLines,
+            })
             if (patch.split('\n').length <= 4) {
               return 'No changes detected since last snapshot'
             }
